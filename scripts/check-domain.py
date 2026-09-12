@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 
 PAGES_IPS = {'185.199.108.153', '185.199.109.153', '185.199.110.153', '185.199.111.153'}
-REPO = os.environ.get('GITHUB_REPOSITORY', 'syunnjack/guradol')
+REPO = os.environ.get('GITHUB_REPOSITORY', 'syunnjack/shinsaku-calendar')
 
 
 def dns_a(host: str) -> set:
