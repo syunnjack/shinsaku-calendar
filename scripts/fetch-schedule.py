@@ -12,14 +12,21 @@
 取るのは **先月から3か月先まで**。カレンダーなので、古いものは要らない。
 ただし**一度取った月のファイルは消さない**（公開したURLを落とさないため）。
 
-## アフィリエイトIDについて
+## アフィリエイトIDについて（2つを混同しない）
 
-`FANZA_AFFILIATE_ID` が空なら、**素の作品ページURLを組み立てる**。
-参加規約 第7条が「申請していないサイトでのID利用」を禁止行為としているため、
-承認が下りるまでアフィリエイトIDを付けない。
+**API を叩くには `affiliate_id` が必須。** 空やでたらめな値だと、API は
+エラーではなく **200 で 0件を返す**（2026-09-12 に実際にはまった）。
+だから `FANZA_AFFILIATE_ID` は、サイトが承認される前から必要になる。
+API を叩くために取った登録（`-990`〜`-999`）を入れておけばよい。
 
-承認後に Secrets へIDを入れて取り直すと、API が `affiliateURL` を返すので
-そちらに切り替わる。**URLを手で書き換えない**（素材の改変にあたるため）。
+**それとは別に、ページに出すリンクをアフィリエイトリンクにするかどうかは
+`AFFILIATE_LINKS` で決める。** 既定は off で、素の作品ページURLを出す。
+参加規約 第7条が「申請していないサイトでのID利用」を禁止行為としていて、
+罰則が「事前に何らの通知なく、参加登録の解除、報酬の没収」だから。
+
+サイトが承認されたら、`FANZA_AFFILIATE_ID` をそのサイトのIDに替え、
+`AFFILIATE_LINKS=1` にして取り直す。**URLを手で書き換えない**
+（提供素材の改変にあたるため）。
 
 ## 出力
 
@@ -35,7 +42,8 @@
 
 環境変数:
   FANZA_API_ID          必須
-  FANZA_AFFILIATE_ID    空でよい（承認後に入れる）
+  FANZA_AFFILIATE_ID    必須（API を叩くのに要る。承認前は -990〜-999 でよい）
+  AFFILIATE_LINKS       1 のときだけアフィリエイトリンクを出す（既定は出さない）
   MONTHS_AHEAD          何か月先まで取るか（既定 3）
   MONTHS_BACK           何か月前まで取るか（既定 1）
 """
@@ -109,13 +117,14 @@ def names(block, key: str) -> list:
     return out
 
 
-def tidy(item: dict, affiliate_id: str) -> dict:
+def tidy(item: dict, use_links: bool) -> dict:
     """API の返しから、ページに出すものだけを抜く。**推測で足さない。**"""
     info = item.get('iteminfo') or {}
     prices = item.get('prices') or {}
 
-    # アフィリエイトIDが無いときは素のURL。**申請していないIDを使わない。**
-    url = item.get('affiliateURL') if affiliate_id else item.get('URL')
+    # **承認が下りるまでは素のURL。** API を叩くのに affiliate_id は要るが、
+    # それをページのリンクに使うかどうかは別の話（参加規約 第7条）。
+    url = item.get('affiliateURL') if use_links else item.get('URL')
 
     labels = names(info, 'label')
 
@@ -150,6 +159,14 @@ def take_month(cred: dict, label: str) -> list:
 
         payload = fetch(f'{BASE}/ItemList?' + urllib.parse.urlencode(params)).get('result', {})
 
+        # **API はエラーも 200 で返す。** 握りつぶすと「0件」にしか見えず、
+        # 原因にたどり着けない（2026-09-12 に affiliate_id が不正で全月0件になった）。
+        status = payload.get('status')
+        if status and str(status) != '200':
+            print(f'    API がエラーを返しました: status={status} '
+                  f'message={payload.get("message")}', file=sys.stderr)
+            raise SystemExit(1)
+
         if total is None:
             total = int(payload.get('total_count') or 0)
 
@@ -176,12 +193,22 @@ def main() -> None:
         raise SystemExit(1)
 
     if not affiliate_id:
-        print('FANZA_AFFILIATE_ID が空です。**素の作品URLで作ります**'
-              '（サイト審査が通るまでは、これが正しい状態）。')
+        print('環境変数 FANZA_AFFILIATE_ID が必要です。'
+              '**API を叩くのに必須**で、無いと API は 200 で 0件を返します。'
+              'サイトが承認される前は、API 用に取った登録（-990〜-999）を入れてください。',
+              file=sys.stderr)
+        raise SystemExit(1)
 
-    # API は affiliate_id を必須にしている。**リンクに使うかどうかは別問題**で、
-    # 空のときは返ってきた affiliateURL を使わず URL のほうを採る。
-    cred = {'api_id': api_id, 'affiliate_id': affiliate_id or 'none-0'}
+    use_links = os.environ.get('AFFILIATE_LINKS', '').strip() == '1'
+
+    if use_links:
+        print(f'アフィリエイトリンクを出します（{affiliate_id}）。'
+              'このサイトが承認済みであることを確認してください。')
+    else:
+        print('**素の作品URLで作ります。** サイト審査が通るまでは、これが正しい状態です'
+              '（AFFILIATE_LINKS=1 で切り替わります）。')
+
+    cred = {'api_id': api_id, 'affiliate_id': affiliate_id}
 
     months_back = int(os.environ.get('MONTHS_BACK', '1'))
     months_ahead = int(os.environ.get('MONTHS_AHEAD', '3'))
@@ -198,7 +225,7 @@ def main() -> None:
 
     for label in month_range(months_back, months_ahead):
         raw = take_month(cred, label)
-        rows = [tidy(item, affiliate_id) for item in raw]
+        rows = [tidy(item, use_links) for item in raw]
         rows = [row for row in rows if row['c'] and row['t'] and row['d']]
         rows.sort(key=lambda row: (row['d'], row['t']))
 
@@ -213,7 +240,7 @@ def main() -> None:
         'confirmedOn': date.today().isoformat(),
         'source': 'DMM.com アフィリエイト Web サービス（FANZA digital/videoa）',
         'sourceUrl': 'https://affiliate.dmm.com/api/',
-        'affiliate': bool(affiliate_id),
+        'affiliate': use_links,
         'months': dict(sorted(months.items())),
     }
 

@@ -42,9 +42,13 @@ jobs:
       - name: 発売予定を取る
         env:
           FANZA_API_ID: ${{ secrets.FANZA_API_ID }}
-          # **承認が下りるまで空でよい。** 空なら素の作品URLで作る
-          # （参加規約 第7条：申請していないサイトでのID利用は禁止行為）。
+          # **API を叩くのに必須。** 無いと API はエラーではなく 200 で 0件を返す。
+          # サイトが承認される前は、API 用に取った登録（-990〜-999）を入れる。
           FANZA_AFFILIATE_ID: ${{ secrets.FANZA_AFFILIATE_ID }}
+          # **ページのリンクにIDを使うかどうかは別の話。**
+          # 1 にするのは、このサイトが承認されてから
+          # （参加規約 第7条：申請していないサイトでのID利用は禁止行為）。
+          AFFILIATE_LINKS: ${{ vars.AFFILIATE_LINKS }}
           MONTHS_AHEAD: ${{ inputs.months_ahead || '3' }}
           MONTHS_BACK: ${{ inputs.months_back || '1' }}
         run: python scripts/fetch-schedule.py
