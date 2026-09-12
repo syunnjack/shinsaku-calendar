@@ -256,12 +256,15 @@ async function write(dir, html) {
 }
 
 async function main() {
-  let book
+  // **データが無くても最後まで作る。** ここで return すると dist ができず、
+  // デプロイのワークフローが「artifact が無い」で失敗する。
+  // 中身が空のサイトが出るだけで、壊れはしない。
+  let book = { months: {} }
   try {
     book = JSON.parse(await readFile(path.join(dataDir, 'schedule.json'), 'utf8'))
   } catch {
-    console.log('データがまだありません。取得を先に走らせてください。')
-    return
+    console.log('データがまだありません。**空のまま組み立てます**'
+      + '（取得を走らせれば中身が入ります）。')
   }
 
   const months = book.months ?? {}
