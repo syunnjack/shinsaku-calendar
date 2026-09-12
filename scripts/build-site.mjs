@@ -298,10 +298,28 @@ async function main() {
       + '<span class="pr">広告</span></p>'
     : ''
 
-  // ---- 月別 ----------------------------------------------------------------
+  // ---- 月別・旬別 ------------------------------------------------------------
   // **過去の月も消さない。** 出典から消えたらページごと消す作りにして、
   // darekore.jp で404が119件出た。一度公開したURLは残す。
+  //
+  // **10日区切りのページも作る。** 2026-09-12 に「AV 新作 発売予定」で
+  // 検索したところ、FANZA 公式の発売日カレンダーが
+  // 「09月 1日～10日」「09月 21日～30日」という**10日区切りのページ**で
+  // 2つとも上位に出ていた。月まるごとより、この粒度が探されている。
+  // 月3枚 × 収録月数なので、ページ数は3桁に収まる。
   const monthKeys = Object.keys(months).sort()
+
+  /** その月を10日ごとに3つに割る。末日が31日でも30日でも3つ目に入れる。 */
+  const TENS = [
+    { slug: '1-10', from: 1, to: 10 },
+    { slug: '11-20', from: 11, to: 20 },
+    { slug: '21-31', from: 21, to: 31 },
+  ]
+
+  const tenLabel = (label, span) => {
+    const [, month] = label.split('-')
+    return `${monthLabel(label)} ${span.from}日〜${span.to}日`
+  }
 
   for (const label of monthKeys) {
     const rows = months[label]
@@ -327,8 +345,47 @@ async function main() {
         body: `<h1>${escapeHtml(monthLabel(label))}に出るもの</h1>
           <p class="lead">${escapeHtml(description)}${pages.length > 1 ? `${page}ページ目です。` : ''}</p>
           ${adNote}
+          <div class="chips">${TENS.map((span) =>
+            `<a href="/month/${escapeHtml(label)}/${span.slug}/">${span.from}日〜${span.to}日</a>`).join('')}</div>
           ${renderByDay(pages[page - 1], affiliate)}
           ${pager(base, page, pages.length)}
+          ${sourceNote}`,
+      }))
+
+      urls.push(canonical)
+    }
+
+    // 10日区切り。**その区間に1本も無ければページを作らない。**
+    for (const span of TENS) {
+      const slice = rows.filter((row) => {
+        const day = Number(String(row.d).slice(8, 10))
+        return day >= span.from && day <= span.to
+      })
+
+      if (!slice.length) continue
+
+      const base = `/month/${label}/${span.slug}/`
+      const canonical = `${SITE_URL}${base}`
+      const days = new Set(slice.map((row) => row.d)).size
+      const name = tenLabel(label, span)
+
+      const description = `${name}に発売・配信されるFANZAの単品動画 `
+        + `${slice.length.toLocaleString('ja-JP')}本を、発売日の順に並べています（${days}日ぶん）。`
+
+      await write(path.join(outDir, 'month', label, span.slug), shell({
+        title: `${name}に出るアダルト動画 ${slice.length.toLocaleString('ja-JP')}本｜${SITE_NAME}`,
+        description,
+        canonical,
+        crumbs: `<a href="/">${escapeHtml(SITE_NAME)}</a> ＞ <a href="/month/">月から探す</a>`
+          + ` ＞ <a href="/month/${escapeHtml(label)}/">${escapeHtml(monthLabel(label))}</a> ＞ ${span.from}日〜${span.to}日`,
+        body: `<h1>${escapeHtml(name)}に出るもの</h1>
+          <p class="lead">${escapeHtml(description)}</p>
+          ${adNote}
+          ${renderByDay(slice.slice(0, PAGE_SIZE), affiliate)}
+          <h2>同じ月のほかの期間</h2>
+          <div class="chips">${TENS.filter((other) => other.slug !== span.slug)
+            .map((other) => `<a href="/month/${escapeHtml(label)}/${other.slug}/">${other.from}日〜${other.to}日</a>`)
+            .join('')}<a href="/month/${escapeHtml(label)}/">${escapeHtml(monthLabel(label))}のすべて</a></div>
           ${sourceNote}`,
       }))
 
