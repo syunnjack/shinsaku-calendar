@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # fetch から呼ばれたときは、bot が commit したあとの main を取る。
+      # 既定だと起動時点の SHA になり、取り直したデータを含まない状態で配信してしまう。
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: 組み立てる
+        env:
+          # **独自ドメインが決まったら、ここに入れる。**
+          # 空のままなら github.io のサブパスで動く（CNAME も書かない）。
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+        run: node scripts/build-site.mjs
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
