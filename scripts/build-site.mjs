@@ -112,6 +112,28 @@ footer a { color:#2b4d7e; }
 `
 
 /**
+ * 価格。**API は `2180~` のように末尾に `~` を付けて返す。**
+ *
+ * この `~` は「購入の仕方が複数あり、いちばん安いのがこの額」という意味で、
+ * 消してはいけない情報。`Number('2180~')` は NaN になるので、
+ * 数字の部分と `~` の有無を分けて持つ。
+ *
+ * 2026-09-13、これを見落として全作品に「NaN円」と出た。
+ */
+function yen(value) {
+  const text = String(value ?? '').trim()
+  const digits = text.replace(/[^0-9]/g, '')
+  if (!digits) return null
+  return { n: Number(digits), from: text.includes('~') || text.includes('〜') }
+}
+
+function priceLabel(value) {
+  const price = yen(value)
+  if (!price) return ''
+  return `${price.n.toLocaleString('ja-JP')}円${price.from ? '〜' : ''}`
+}
+
+/**
  * 割引率。**定価と実売価格の差から計算する。**
  *
  * どちらも API が返した数字で、こちらが決めた値は入っていない。
@@ -119,10 +141,19 @@ footer a { color:#2b4d7e; }
  * **「お得」「激安」のような評価の言葉は使わない。** 数字だけを出す。
  */
 function discount(work) {
-  const price = Number(work.p)
-  const list = Number(work.lp)
-  if (!price || !list || list <= price) return 0
-  return Math.round((1 - price / list) * 100)
+  const price = yen(work.p)
+  const list = yen(work.lp)
+  if (!price || !list || list.n <= price.n) return 0
+  return Math.round((1 - price.n / list.n) * 100)
+}
+
+/**
+ * レーベル名。**`----` は API が「無い」を表すために返す文字列**で、
+ * レーベル名ではない（5,200本のうち503本がこれ）。出さない。
+ */
+function labelOf(work) {
+  const name = String(work.l ?? '').trim()
+  return /^-+$/.test(name) ? '' : name
 }
 
 /** 作品を表紙つきで並べる。**リンク先は作品ページ。画像は権利者が返したURL。** */
@@ -139,12 +170,10 @@ function renderWorks(works, affiliate) {
     // （名鑑の作り直しにしないため）。
     const cast = (work.a ?? []).slice(0, 3).join('、')
     const off = discount(work)
-    const price = work.p
-      ? (off
-        ? `${Number(work.lp).toLocaleString('ja-JP')}円 → ${Number(work.p).toLocaleString('ja-JP')}円（${off}%引き）`
-        : `${Number(work.p).toLocaleString('ja-JP')}円`)
-      : ''
-    const meta = [cast, work.l, price].filter(Boolean).join('／')
+    const price = off
+      ? `${priceLabel(work.lp)} → ${priceLabel(work.p)}（${off}%引き）`
+      : priceLabel(work.p)
+    const meta = [cast, labelOf(work), price].filter(Boolean).join('／')
 
     // 承認が下りるまでは素のURL。**申請していないIDを使わない**（参加規約 第7条）。
     const rel = affiliate ? 'nofollow sponsored noopener' : 'nofollow noopener'
@@ -413,7 +442,7 @@ async function main() {
     const map = new Map()
 
     for (const work of all) {
-      const values = key === 'g' ? (work.g ?? []) : (work.l ? [work.l] : [])
+      const values = key === 'g' ? (work.g ?? []) : (labelOf(work) ? [labelOf(work)] : [])
       for (const value of values) {
         if (!map.has(value)) map.set(value, [])
         map.get(value).push(work)
@@ -544,9 +573,14 @@ async function main() {
     .sort((a, b) => b.d.localeCompare(a.d) || a.t.localeCompare(b.t, 'ja'))
     .slice(0, 60)
 
+  // **出している数と、収録している数を混同しない。**
+  // 上限で切ったぶんを「これから出るもの」の全数のように書かない。
+  const upcomingTotal = all.filter((work) => work.d >= today).length
+
   const topDescription = upcoming.length
-    ? `これから発売・配信されるFANZAの単品動画 ${upcoming.length.toLocaleString('ja-JP')}本を、`
-      + `発売日の順に並べています。${confirmedOn} 時点のデータです。`
+    ? `これから発売・配信されるFANZAの単品動画 ${upcomingTotal.toLocaleString('ja-JP')}本のうち、`
+      + `発売日の近い ${upcoming.length.toLocaleString('ja-JP')}本を並べています。`
+      + `${confirmedOn} 時点のデータです。`
     : `FANZAの単品動画 ${all.length.toLocaleString('ja-JP')}本を、発売日の順に並べています。`
 
   await write(outDir, shell({
