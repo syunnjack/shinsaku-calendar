@@ -18,6 +18,11 @@ const outDir = path.join(root, 'dist')
 // **ドメインが決まるまでは github.io で動かす。** 独自ドメインを当てるときに
 // `SITE_DOMAIN` を入れれば、CNAME・canonical・サイトマップ・連絡先が一斉に切り替わる。
 const SITE_DOMAIN = process.env.SITE_DOMAIN || ''
+
+// Search Console の所有権確認タグ。**全ページのheadに入る。**
+// 外すと所有権が外れるので、確認が済んでも消さない（Googleは定期的に再確認する）。
+// 値はリポジトリ変数 GSC_VERIFY。秘密ではないが、1箇所でだけ持つ。
+const GSC_VERIFY = process.env.GSC_VERIFY || ''
 const FALLBACK_HOST = 'syunnjack.github.io/shinsaku-calendar'
 
 const SITE_URL = SITE_DOMAIN ? `https://${SITE_DOMAIN}` : `https://${FALLBACK_HOST}`
@@ -213,6 +218,7 @@ function shell({ title, description, canonical, crumbs, body, schema }) {
     <meta name="description" content="${escapeHtml(description)}" />
     <meta name="robots" content="index,follow,max-image-preview:large" />
     <meta name="rating" content="adult" />
+    ${GSC_VERIFY ? `<meta name="google-site-verification" content="${escapeHtml(GSC_VERIFY)}" />` : ''}
     <link rel="canonical" href="${canonical}" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="ja_JP" />

@@ -37,6 +37,9 @@ jobs:
           # **独自ドメインが決まったら、ここに入れる。**
           # 空のままなら github.io のサブパスで動く（CNAME も書かない）。
           SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          # Search Console の所有権確認タグ。**確認後も外さない。**
+          # Google は定期的に再確認するので、消すと所有権が外れる。
+          GSC_VERIFY: ${{ vars.GSC_VERIFY }}
         run: node scripts/build-site.mjs
 
       - uses: actions/configure-pages@v5
